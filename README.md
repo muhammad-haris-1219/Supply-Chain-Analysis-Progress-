@@ -1,12 +1,12 @@
 # Financial PDF Extraction & Database ETL Pipeline
 
-An end-to-end Python ETL pipeline that extracts structured financial metrics, statement subsections, and historical rows from semi-structured corporate PDFs and loads them into an MS SQL Server warehouse.
+An end-to-end Python ETL pipeline that extracts structured financial metrics, statement subsections and historical rows from semi-structured corporate PDFs and loads them into an MS SQL Server warehouse.
 
 ---
 
 ## 🗺️ Pipeline Architecture Flow & Database Schema
 
-Below is the complete architectural layout of the data extraction layers and the final database schema:
+Below is architectural layout of the data extraction layers:
 
 ![Financial Pipeline Flowchart](pipeline_flowchart.svg)
 
