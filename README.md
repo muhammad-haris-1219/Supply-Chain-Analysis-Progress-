@@ -4,7 +4,7 @@ An end-to-end Python ETL pipeline that extracts structured financial metrics, st
 
 ---
 
-## 🗺️ Pipeline Architecture Flow & Database Schema
+## 🗺️ Pipeline Architecture Flow
 
 Below is architectural layout of the data extraction layers:
 
