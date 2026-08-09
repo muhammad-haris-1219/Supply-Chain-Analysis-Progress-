@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="100%" height="100%" style="background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff" />
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <text x="500" y="45" fill="#f0f6fc" font-size="22" font-weight="bold" text-anchor="middle">Financial PDF Extraction &amp; Database ETL Pipeline</text>
+
+  <!-- Step 1 -->
+  <g transform="translate(50, 100)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#238636"/>
+    <text x="20" y="38" fill="#7ee787" font-size="12" font-weight="bold">1. INGESTION</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">PDF Directory Walk</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">os.walk() • PyMuPDF (fitz)</text>
+  </g>
+
+  <path d="M 290 145 L 370 145" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" fill="none"/>
+
+  <!-- Step 2 -->
+  <g transform="translate(380, 100)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#d29922"/>
+    <text x="20" y="38" fill="#f2cc60" font-size="12" font-weight="bold">2. PREPROCESSING</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">Orientation Check</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">Auto-Rotate 90° / 180°</text>
+  </g>
+
+  <path d="M 500 190 L 500 260" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" fill="none"/>
+
+  <!-- Step 3 -->
+  <g transform="translate(380, 270)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#1f6beb"/>
+    <text x="20" y="38" fill="#58a6ff" font-size="12" font-weight="bold">3. LAYOUT ANALYSIS</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">Y-Coord Row Clustering</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">4px Delta Row Grouping</text>
+  </g>
+
+  <path d="M 380 315 L 290 315" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" fill="none"/>
+
+  <!-- Step 4 -->
+  <g transform="translate(50, 270)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#a371f7"/>
+    <text x="20" y="38" fill="#d2a8ff" font-size="12" font-weight="bold">4. NLP &amp; CLASSIFICATION</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">Header &amp; Year Regex</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">Statement &amp; Subsections</text>
+  </g>
+
+  <path d="M 170 360 L 170 430" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" fill="none"/>
+
+  <!-- Step 5 -->
+  <g transform="translate(50, 440)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#f0883e"/>
+    <text x="20" y="38" fill="#ffa657" font-size="12" font-weight="bold">5. PARSING ENGINE</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">Label / Value Splitter</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">Map Column Years to Values</text>
+  </g>
+
+  <path d="M 290 485 L 370 485" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)" fill="none"/>
+
+  <!-- Step 6 -->
+  <g transform="translate(380, 440)" filter="url(#shadow)">
+    <rect width="240" height="90" rx="10" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <rect width="240" height="8" rx="4" fill="#238636"/>
+    <text x="20" y="38" fill="#7ee787" font-size="12" font-weight="bold">6. DATABASE LOAD</text>
+    <text x="20" y="60" fill="#f0f6fc" font-size="15" font-weight="bold">MS SQL Server</text>
+    <text x="20" y="78" fill="#8b949e" font-size="11">pyodbc fast_executemany</text>
+  </g>
+
+  <!-- Database Schema Diagram -->
+  <g transform="translate(700, 180)" filter="url(#shadow)">
+    <rect width="240" height="350" rx="12" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+    <text x="120" y="35" fill="#f0f6fc" font-size="16" font-weight="bold" text-anchor="middle">FinancialRawData DB</text>
+    <line x1="20" y1="50" x2="220" y2="50" stroke="#30363d" stroke-width="1"/>
+    
+    <text x="30" y="80" fill="#58a6ff" font-weight="bold" font-size="13">PK</text>
+    <text x="70" y="80" fill="#f0f6fc" font-size="13">ID (INT)</text>
+
+    <text x="30" y="115" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="115" fill="#f0f6fc" font-size="13">Organization</text>
+
+    <text x="30" y="150" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="150" fill="#f0f6fc" font-size="13">PDF-Year</text>
+
+    <text x="30" y="185" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="185" fill="#f0f6fc" font-size="13">Statement Type</text>
+
+    <text x="30" y="220" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="220" fill="#f0f6fc" font-size="13">Subsection</text>
+
+    <text x="30" y="255" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="255" fill="#f0f6fc" font-size="13">Item labels</text>
+
+    <text x="30" y="290" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="290" fill="#f0f6fc" font-size="13">Data Year</text>
+
+    <text x="30" y="325" fill="#8b949e" font-size="13">COL</text>
+    <text x="70" y="325" fill="#f0f6fc" font-size="13">Value</text>
+  </g>
+
+  <path d="M 620 485 L 700 355" stroke="#238636" stroke-width="3" stroke-dasharray="6,6" marker-end="url(#arrow)" fill="none"/>
+</svg>
