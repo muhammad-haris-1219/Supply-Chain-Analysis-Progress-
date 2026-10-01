@@ -1,56 +1,20 @@
-import os
 import re
-from PIL import Image
 import pymupdf as fitz
-import pyodbc
-import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
+pdf_path = r"D:\WMA\Python\Project\Files\Engro\Engro 2021.pdf"
+doc = fitz.open(pdf_path)
 
-server = r"DESKTOP-GLLJDAK\SQLEXPRESS"
-database = "FinancialDataDB"
-
-conn_str = (
-    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-    f"SERVER={server};"
-    f"DATABASE={database};"
-    "Trusted_Connection=yes;"
-)
-conn = pyodbc.connect(conn_str)
-cursor = conn.cursor()
-
-cursor.execute("""
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'FinancialRawData')
-    BEGIN
-        CREATE TABLE FinancialRawData (
-            ID INT IDENTITY(1,1) PRIMARY KEY,
-            Nature VARCHAR(255) DEFAULT 'FMCG',
-            Organization VARCHAR(255),
-            [PDF-Year] INT,
-            [Statement Type] VARCHAR(255),
-            Subsection VARCHAR(255),
-            [Item labels] VARCHAR(MAX),
-            [Data Year] INT,
-            Value VARCHAR(255)
-        )
-    END
-""")
-conn.commit()
-
-base_folder = r"D:\WMA\Python\Project\Files"
-
-statement_pattern = re.compile(
-    r"^(?:"
+universal_statement_pattern = re.compile(
+    r"(?:"
     r"(?:CONDENSED\s+)?"
     r"(?:CONSOLIDATED\s+|UNCONSOLIDATED\s+|GROUP\s+)?"
     r"(?:"
     r"STATEMENT\s+OF\s+FINANCIAL\s+POSITION|"
     r"STATEMENT\s+OF\s+PROFIT\s+OR\s+LOSS(?:\s+AND\s+OTHER\s+COMPREHENSIVE\s+INCOME)?|"
-    r"STATEMENT\s+OF\s+COMPREHENSIVE\s+INCOME|"
-    r"STATEMENT\s+OF\s+CASH\s+FLOWS?|"
     r"STATEMENT\s+OF\s+CHANGES\s+IN\s+EQUITY|"
+    r"STATEMENT\s+OF\s+CASH\s+FLOWS?|"
+    r"STATEMENT\s+OF\s+COMPREHENSIVE\s+INCOME|"
+    r"STATEMENT\s+OF\s+VALUE\s+ADDITION\s+(?:AND|&)\s+DISTRIBUTION|"
     r"BALANCE\s+SHEET|"
     r"INCOME\s+STATEMENT|"
     r"PROFIT\s+AND\s+LOSS\s+ACCOUNT(?:\s+AND\s+OTHER\s+COMPREHENSIVE\s+INCOME)?|"
@@ -63,562 +27,241 @@ statement_pattern = re.compile(
     r"KEY\s+OPERATING\s+AND\s+FINANCIAL\s+DATA|"
     r"OPERATING\s+PERFORMANCE|"
     r"FINANCIAL\s+PERFORMANCE|"
+    r"FINANCIAL\s+PERFORMANCE\s+INDICATORS|"
     r"SUMMARY\s+OF\s+PROFIT\s+OR\s+LOSS|"
     r"FINANCIAL\s+STATEMENTS?"
     r")"
-    r")$",
+    r")",
     re.IGNORECASE,
 )
 
-year_extractor = re.compile(r"\b(20\d{2})\b")
-financial_num_pattern = re.compile(
-    r"^\s*(?:"
-    r"\(\s*\$?\s*-?\s*\d[\d,]*(?:\.\d+)?\s*\)"
-    r"|"
-    r"-\s*\$?\s*\d[\d,]*(?:\.\d+)?"
-    r"|"
-    r"\$?\s*\d[\d,]*(?:\.\d+)?"
-    r")\s*$"
+SECTION_HEADER_PATTERN = re.compile(
+    r"^(?:CASH\s+FLOWS\s+FROM|PURCHASES\s+OF|PROCEEDS\s+FROM|RESERVES|CAPITAL\s+RESERVES|REVENUE\s+RESERVE)",
+    re.IGNORECASE
 )
 
-KNOWN_SUBSECTIONS = {
-    "ASSETS",
-    "NON CURRENT ASSETS",
-    "CURRENT ASSETS",
-    "EQUITY",
-    "SHAREHOLDERS EQUITY",
-    "LIABILITIES",
-    "NON CURRENT LIABILITIES",
-    "CURRENT LIABILITIES",
-    "REVENUE",
-    "EXPENSES",
-    "OPERATING EXPENSES",
-    "COST OF SALES",
-    "OPERATING ACTIVITIES",
-    "INVESTING ACTIVITIES",
-    "FINANCING ACTIVITIES",
-    "CASH FLOWS",
-}
+global_title_tracker = None
 
-STANDARD_LABELS = [
-    "Cost of sales",
-    "Gross profit",
-    "Administrative expenses",
-    "Selling and distribution expenses",
-    "Operating profit",
-    "Finance cost",
-    "Profit before tax",
-    "Taxation",
-    "Profit after tax",
-    "Revenue from contracts with customers",
-    "Other income",
-    "Other expenses",
-    "Net profit",
-    "Property, plant and equipment",
-    "Intangible assets",
-    "Right-of-use assets",
-    "Long term investments",
-    "Deferred tax asset",
-    "Current assets",
-    "Inventories",
-    "Trade debts",
-    "Advances, deposits and prepayments",
-    "Cash and bank balances",
-    "Total assets",
-    "Share capital",
-    "Reserves",
-    "Unappropriated profit",
-    "Total equity",
-    "Non-current liabilities",
-    "Long term financing",
-    "Lease liabilities",
-    "Current liabilities",
-    "Trade and other payables",
-    "Short term borrowings",
-    "Total equity and liabilities",
-    "Net sales",
-    "Stores and spares",
-    "Stock in trade",
-    "Loans and advances",
-    "Other receivables",
-    "Tax refunds due from Government",
-    "Issued, subscribed and paid up capital",
-    "Deferred liabilities",
-    "Accrued mark-up",
-    "Current portion of long term financing",
-    "Unclaimed dividend",
-    "Provision for taxation",
-    "Contingencies and commitments",
-    "Gross margin",
-    "Operating margin",
-    "Disaggregation of revenue",
-    "Local sales",
-    "Export sales",
-    "Sales returns, discounts and direct expense",
-    "Add: Export rebate",
-    "Sales tax",
-    "Share of profit from associated companies - net",
-    "Profit before taxation",
-    "Profit for the year",
-    "Operating fixed assets",
-]
+for page_num in range(len(doc)):
+    page = doc[page_num]
+    all_words = page.get_text("words")
 
-for root, dirs, files in os.walk(base_folder):
-    for filename in files:
-        if not filename.lower().endswith(".pdf"):
+    if not all_words:
+        continue
+
+    word_heights = [w[3] - w[1] for w in all_words if (w[3] - w[1]) > 0]
+    median_height = sorted(word_heights)[len(word_heights) // 2] if word_heights else 10.0
+    dynamic_y_tol = max(1.0, median_height * 0.35)
+
+    left_data_bounds = []
+    right_data_bounds = []
+    for w in all_words:
+        w_x0, w_y0, w_x1, w_y1, text, _, _, _ = w
+        clean_txt = text.replace(",", "").replace("(", "").replace(")", "").strip()
+        if (clean_txt.isdigit() or text == "-") and len(clean_txt) > 0:
+            if w_x0 < page.rect.width * 0.48:
+                left_data_bounds.append(w_x1)
+            else:
+                right_data_bounds.append(w_x0)
+
+    adaptive_dividing_x = page.rect.width / 2.0
+    if left_data_bounds and right_data_bounds:
+        max_left = max(left_data_bounds)
+        min_right = min(right_data_bounds)
+        if min_right > max_left:
+            adaptive_dividing_x = (max_left + min_right) / 2.0
+
+    layout_zones = [
+        {"name": "LEFT", "rect": fitz.Rect(0, 0, adaptive_dividing_x, page.rect.height)},
+        {"name": "RIGHT", "rect": fitz.Rect(adaptive_dividing_x, 0, page.rect.width, page.rect.height)}
+    ]
+
+    for zone in layout_zones:
+        zone_rect = zone["rect"]
+        zone_words = [w for w in all_words if fitz.Rect(w[:4]).intersects(zone_rect)]
+
+        if not zone_words:
             continue
 
-        name_part, _ = os.path.splitext(filename)
-        found_filename_years = [int(y) for y in year_extractor.findall(name_part)]
-        file_pdf_year = max(found_filename_years) if found_filename_years else None
+        zone_lines_temp = {}
+        for w in zone_words:
+            w_x0, w_y0, w_x1, w_y1, text, _, _, _ = w
+            y_k = round(w_y0 / dynamic_y_tol) * dynamic_y_tol
+            zone_lines_temp.setdefault(y_k, []).append((w_x0, text))
 
-        clean_org = re.sub(r"\b(20\d{2})\b", "", name_part, flags=re.IGNORECASE)
-        clean_org = re.sub(r"[-_]", " ", clean_org).strip().upper()
-        clean_org = re.sub(r"\s+", " ", clean_org)
-        if not clean_org:
-            clean_org = "UNKNOWN"
+        zone_statement_title = ""
+        for y_k in sorted(zone_lines_temp.keys()):
+            line_str = " ".join([w[1] for w in sorted(zone_lines_temp[y_k], key=lambda x: x[0])]).strip()
+            if universal_statement_pattern.search(line_str) and len(line_str) < 80:
+                if "NOTE" not in line_str.upper() and "INTEGRAL" not in line_str.upper():
+                    zone_statement_title = line_str
+                    global_title_tracker = line_str
+                    break
 
-        file_path = os.path.join(root, filename)
-        doc = fitz.open(file_path)
+        if not zone_statement_title:
+            zone_statement_title = global_title_tracker if global_title_tracker else "FINANCIAL STATEMENT"
 
-        active_statement = None
-        current_subsection = ""
-        pending_label_prefix = ""
-        previous_column_boundaries = []
-        previous_year_header_count = 0
+        page_lines = {}
+        for w in zone_words:
+            w_x0, w_y0, w_x1, w_y1, text, _, _, _ = w
+            y_key = round(w_y0 / dynamic_y_tol) * dynamic_y_tol
+            page_lines.setdefault(y_key, []).append((w_x0, w_x1, w_y0, text))
 
-        for page_num in range(len(doc)):
-            page = doc[page_num]
+        sorted_y_lines = sorted(page_lines.keys())
+        if not sorted_y_lines:
+            continue
 
-            native_words = page.get_text("words")
-            words = []
+        raw_centers = []
+        center_frequencies = {}
+        first_data_row_y = None
+        first_numeric_word_x0 = None
 
-            if native_words and len(native_words) >= 10:
-                words = native_words
-            else:
-                mat = page.derotation_matrix * fitz.Matrix(150 / 72.0, 150 / 72.0)
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        for y in sorted_y_lines:
+            line_words = sorted(page_lines[y], key=lambda x: x[0])
+            line_full_str = " ".join([w[3] for w in line_words]).upper()
 
-                ocr_data = pytesseract.image_to_data(
-                    img,
-                    output_type=pytesseract.Output.DICT,
-                    config=r"--oem 3 --psm 3 -c preserve_interword_spaces=1",
-                )
-
-                ocr_w, ocr_h = pix.width, pix.height
-                page_w, page_h = page.rect.width, page.rect.height
-                scale_x = page_w / max(ocr_w, 1)
-                scale_y = page_h / max(ocr_h, 1)
-
-                for i in range(len(ocr_data["text"])):
-                    t = ocr_data["text"][i].strip()
-
-                    try:
-                        c = float(ocr_data["conf"][i])
-                    except (ValueError, TypeError):
-                        continue
-
-                    if t and len(t) >= 1 and c > 25.0:
-                        lx0, ly0, lw, lh = (
-                            ocr_data["left"][i],
-                            ocr_data["top"][i],
-                            ocr_data["width"][i],
-                            ocr_data["height"][i],
-                        )
-                        rx0, ry0 = lx0 * scale_x, ly0 * scale_y
-                        rx1, ry1 = (lx0 + lw) * scale_x, (ly0 + lh) * scale_y
-
-                        words.append((rx0, ry0, rx1, ry1, t))
-
-            if not words:
+            if any(k in line_full_str for k in ["FOR THE YEAR", "ANNUAL REPORT", "FRIESLANDCAMPINA"]):
                 continue
 
-            rect = page.rect
-            page_height = rect.height
+            num_tokens = []
+            for w_x0, w_x1, w_y0, text in line_words:
+                clean_txt = text.replace(",", "").replace("(", "").replace(")", "").strip()
+                if (clean_txt.isdigit() or text == "-") and len(clean_txt) > 0:
+                    if clean_txt in ["1", "31", "2020", "2021"] and w_x0 < (zone_rect.x0 + zone_rect.width * 0.30):
+                        continue
+                    num_tokens.append((w_x0, w_x1))
 
-            rows_by_y = {}
+            if len(num_tokens) >= 1:
+                if first_data_row_y is None and len(num_tokens) >= 2:
+                    first_data_row_y = y
+                
+                if first_numeric_word_x0 is None and len(num_tokens) >= 2:
+                    first_numeric_word_x0 = num_tokens[0][0]
 
-            for w in words:
-                x0, y0, x1, y1, word_str = w[:5]
+                for w_x0, w_x1 in num_tokens:
+                    center_x = (w_x0 + w_x1) / 2.0
+                    matched_existing = False
+                    for c in raw_centers:
+                        if abs(center_x - c) < (median_height * 2.5):
+                            center_frequencies[c] += 1
+                            matched_existing = True
+                            break
+                    if not matched_existing:
+                        raw_centers.append(center_x)
+                        center_frequencies[center_x] = 1
 
-                if y1 > page_height * 0.96:
+        detected_column_centers = sorted([c for c in raw_centers if center_frequencies[c] >= 2])
+        total_cols = len(detected_column_centers)
+
+        if total_cols == 0:
+            continue
+
+        if first_numeric_word_x0:
+            DATA_LABEL_END_X = first_numeric_word_x0 - (median_height * 0.5)
+        else:
+            DATA_LABEL_END_X = detected_column_centers[0] - (median_height * 1.0)
+
+        print("\n====================================================================================")
+        print(f"🚀 SLICING GRIDS ENGINE: EXECUTING {zone['name']} CLIPPED ZONE ON PAGE {page_num}")
+        print(f"Dynamic Title Header: '{zone_statement_title}'")
+        print("====================================================================================")
+
+        header_pockets = {i: [] for i in range(total_cols)}
+
+        title_y_start = None
+        for y in sorted_y_lines:
+            line_str = " ".join([w[3] for w in sorted(page_lines[y], key=lambda x: x[0])]).strip()
+            if zone_statement_title in line_str:
+                title_y_start = y
+                break
+
+        if title_y_start is None:
+            title_y_start = sorted_y_lines[0]
+
+        for y in sorted_y_lines:
+            if first_data_row_y and title_y_start <= y < first_data_row_y:
+                line_words = sorted(page_lines[y], key=lambda x: x[0])
+                line_text_upper = " ".join([w[3] for w in line_words]).upper()
+
+                if any(k in line_text_upper for k in ["FOR THE YEAR", "AMOUNTS IN", "CHAIRMAN", "OFFICER", "REPORT", "RUPEES", "---", zone_statement_title.upper()]):
                     continue
 
-                text = str(word_str).strip()
+                for w_x0, w_x1, w_y0, text in line_words:
+                    clean_txt = text.strip()
+                    if not clean_txt or clean_txt == "-":
+                        continue
+                    if w_x0 >= DATA_LABEL_END_X:
+                        mid_x = (w_x0 + w_x1) / 2.0
+                        for idx, center_x in enumerate(detected_column_centers):
+                            col_min_x = zone_rect.x0 if idx == 0 else (detected_column_centers[idx - 1] + center_x) / 2.0
+                            col_max_x = zone_rect.x1 if idx == total_cols - 1 else (center_x + detected_column_centers[idx + 1]) / 2.0
+                            if col_min_x <= mid_x <= col_max_x:
+                                header_pockets[idx].append((w_y0, w_x0, clean_txt))
+                                break
 
-                if not text:
-                    continue
+        constructed_headers = []
+        for idx in range(total_cols):
+            pocket_words = sorted(header_pockets[idx], key=lambda x: (x[0], x[1]))
+            col_title = " ".join([w[2] for w in pocket_words]).strip()
+            col_title = re.sub(r'^(RESERVES|CAPITAL|REVENUE|ACTIVITIES)\s+', '', col_title, flags=re.IGNORECASE)
+            constructed_headers.append(col_title if col_title else f"Column_{idx+1}")
 
-                center_y = (y0 + y1) / 2
-                best_row = None
-                best_distance = float("inf")
+        print(f"➔ {[zone_statement_title, 'Description'] + constructed_headers}")
 
-                for stored_y in rows_by_y:
-                    distance = abs(stored_y - center_y)
+        buffered_label = ""
 
-                    if distance <= 4 and distance < best_distance:
-                        best_distance = distance
-                        best_row = stored_y
+        for y in sorted_y_lines:
+            if first_data_row_y and y < first_data_row_y:
+                continue
 
-                if best_row is None:
-                    rows_by_y[center_y] = [(x0, y0, x1, y1, text)]
+            words_in_line = sorted(page_lines[y], key=lambda x: x[0])
+            line_text_upper = " ".join([w[3] for w in words_in_line]).upper()
+
+            if any(k in line_text_upper for k in ["CHAIRMAN", "OFFICER", "FRIESLANDCAMPINA", "ANNUAL REPORT"]):
+                continue
+
+            label_pieces = []
+            value_slots = ["-"] * total_cols
+            has_numeric_data = False
+
+            for w_x0, w_x1, w_y0, text in words_in_line:
+                if w_x0 < DATA_LABEL_END_X:
+                    label_pieces.append(text)
                 else:
-                    rows_by_y[best_row].append((x0, y0, x1, y1, text))
+                    clean_txt = text.replace(",", "").replace("(", "").replace(")", "").strip()
+                    if clean_txt.isdigit() or text == "-":
+                        mid_x = (w_x0 + w_x1) / 2.0
+                        for idx, center_x in enumerate(detected_column_centers):
+                            col_min_x = zone_rect.x0 if idx == 0 else (detected_column_centers[idx - 1] + center_x) / 2.0
+                            col_max_x = zone_rect.x1 if idx == total_cols - 1 else (center_x + detected_column_centers[idx + 1]) / 2.0
+                            if col_min_x <= mid_x <= col_max_x:
+                                value_slots[idx] = text
+                                has_numeric_data = True
+                                break
 
-            sorted_y_keys = sorted(rows_by_y.keys())
+            current_label_str = " ".join(label_pieces).strip()
 
-            for y_key in sorted_y_keys:
-                rows_by_y[y_key].sort(key=lambda x: x[0])
+            if not current_label_str or current_label_str.startswith("---") or current_label_str.startswith("___"):
+                continue
 
-            detected_years_by_x = {}
-            year_candidates = []
+            # Handling Section Headings (e.g. CASH FLOWS FROM OPERATING ACTIVITIES)
+            if SECTION_HEADER_PATTERN.search(current_label_str) and not has_numeric_data:
+                if buffered_label:
+                    print(f"➔ {[zone_statement_title, buffered_label] + ['-'] * total_cols}")
+                    buffered_label = ""
+                print(f"➔ {[zone_statement_title, current_label_str] + ['-'] * total_cols}")
+                continue
 
-            for i, y_key in enumerate(sorted_y_keys):
-                row_words = rows_by_y[y_key]
-                row_years = []
-
-                for w in row_words:
-                    token = w[4].strip()
-
-                    if year_extractor.fullmatch(token):
-                        year_value = int(token)
-
-                        if 2000 <= year_value <= 2100:
-                            row_years.append({
-                                "year": year_value,
-                                "x": (w[0] + w[2]) / 2,
-                            })
-
-                if not row_years:
-                    continue
-
-                following_numeric_rows = 0
-
-                for next_y in sorted_y_keys[i + 1 : i + 4]:
-                    next_words = rows_by_y[next_y]
-                    numeric_count = 0
-
-                    for nw in next_words:
-                        nt = nw[4].strip().replace(" ", "")
-
-                        if financial_num_pattern.fullmatch(nt):
-                            numeric_count += 1
-
-                    if numeric_count > 0:
-                        following_numeric_rows += 1
-
-                if following_numeric_rows > 0:
-                    year_candidates.append({
-                        "years": row_years,
-                        "score": (len(row_years) * 10)
-                        + (following_numeric_rows * 5),
-                    })
-
-            if year_candidates:
-                best_year_group = max(year_candidates, key=lambda x: x["score"])
-
-                for item in best_year_group["years"]:
-                    x_key = item["x"]
-                    detected_years_by_x[x_key] = item["year"]
-
-            year_headers = [
-                {"year": year_value, "x": x_key}
-                for x_key, year_value in sorted(
-                    detected_years_by_x.items(), key=lambda item: item[0]
-                )
-            ]
-
-            column_boundaries = []
-
-            if len(year_headers) == 1:
-                column_boundaries.append((0, rect.width, year_headers[0]["year"]))
-
-            elif len(year_headers) >= 2:
-                for i in range(len(year_headers)):
-                    current_x = year_headers[i]["x"]
-                    current_year = year_headers[i]["year"]
-
-                    if i == 0:
-                        next_x = year_headers[i + 1]["x"]
-                        left_x = 0
-                        right_x = (current_x + next_x) / 2
-
-                    elif i == len(year_headers) - 1:
-                        previous_x = year_headers[i - 1]["x"]
-                        left_x = (previous_x + current_x) / 2
-                        right_x = rect.width
-
-                    else:
-                        previous_x = year_headers[i - 1]["x"]
-                        next_x = year_headers[i + 1]["x"]
-                        left_x = (previous_x + current_x) / 2
-                        right_x = (current_x + next_x) / 2
-
-                    column_boundaries.append((left_x, right_x, current_year))
-
-            if column_boundaries:
-                previous_column_boundaries = column_boundaries.copy()
-                previous_year_header_count = len(year_headers)
-            elif previous_column_boundaries:
-                if previous_year_header_count >= 2:
-                    column_boundaries = previous_column_boundaries.copy()
-                else:
-                    column_boundaries = []
+            if not has_numeric_data:
+                buffered_label = f"{buffered_label} {current_label_str}".strip() if buffered_label else current_label_str
             else:
-                column_boundaries = []
+                final_row_label = f"{buffered_label} {current_label_str}".strip() if buffered_label else current_label_str
+                print(f"➔ {[zone_statement_title, final_row_label] + value_slots}")
+                buffered_label = ""
 
-            records_to_insert = []
+        if buffered_label and len(buffered_label) > 2:
+            print(f"➔ {[zone_statement_title, buffered_label] + ['-'] * total_cols}")
 
-            for y_key in sorted_y_keys:
-                row_words = rows_by_y[y_key]
-                tokens = [w[4].strip() for w in row_words if w[4].strip()]
+        print("====================================================================================")
 
-                if not tokens:
-                    continue
-
-                full_row_str = " ".join(tokens).strip()
-                full_row_upper = full_row_str.upper()
-
-                statement_type = None
-
-                if statement_pattern.fullmatch(full_row_upper.strip()):
-                    if re.search(
-                        r"\bSTATEMENT\s+OF\s+FINANCIAL\s+POSITION\b|\bBALANCE\s+SHEET\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "STATEMENT OF FINANCIAL POSITION"
-                    elif re.search(
-                        r"\bSTATEMENT\s+OF\s+PROFIT\s+OR\s+LOSS\b|\bINCOME\s+STATEMENT\b|\bPROFIT\s+AND\s+LOSS\s+ACCOUNT\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "STATEMENT OF PROFIT OR LOSS"
-                    elif re.search(
-                        r"\bSTATEMENT\s+OF\s+COMPREHENSIVE\s+INCOME\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "STATEMENT OF COMPREHENSIVE INCOME"
-                    elif re.search(
-                        r"\bSTATEMENT\s+OF\s+CASH\s+FLOWS?\b", full_row_upper
-                    ):
-                        statement_type = "STATEMENT OF CASH FLOWS"
-                    elif re.search(
-                        r"\bSTATEMENT\s+OF\s+CHANGES\s+IN\s+EQUITY\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "STATEMENT OF CHANGES IN EQUITY"
-                    elif re.search(
-                        r"\bOPERATING\s+AND\s+FINANCIAL\s+HIGHLIGHTS\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "OPERATING AND FINANCIAL HIGHLIGHTS"
-                    elif re.search(
-                        r"\bFINANCIAL\s+PERFORMANCE\s+AT\s+A\s+GLANCE\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "FINANCIAL PERFORMANCE AT A GLANCE"
-                    elif re.search(
-                        r"\bFINANCIAL\s+HIGHLIGHTS\b", full_row_upper
-                    ):
-                        statement_type = "FINANCIAL HIGHLIGHTS"
-                    elif re.search(r"\bOPERATING\s+HIGHLIGHTS\b", full_row_upper):
-                        statement_type = "OPERATING HIGHLIGHTS"
-                    elif re.search(
-                        r"\bOPERATING\s+PERFORMANCE\b", full_row_upper
-                    ):
-                        statement_type = "OPERATING PERFORMANCE"
-                    elif re.search(
-                        r"\bFINANCIAL\s+PERFORMANCE\b", full_row_upper
-                    ):
-                        statement_type = "FINANCIAL PERFORMANCE"
-                    elif re.search(r"\bFINANCIAL\s+SUMMARY\b", full_row_upper):
-                        statement_type = "FINANCIAL SUMMARY"
-                    elif re.search(
-                        r"\bPERFORMANCE\s+INDICATORS\b", full_row_upper
-                    ):
-                        statement_type = "PERFORMANCE INDICATORS"
-                    elif re.search(
-                        r"\bKEY\s+OPERATING\s+AND\s+FINANCIAL\s+DATA\b",
-                        full_row_upper,
-                    ):
-                        statement_type = "KEY OPERATING AND FINANCIAL DATA"
-                    elif re.search(
-                        r"\bSUMMARY\s+OF\s+PROFIT\s+OR\s+LOSS\b", full_row_upper
-                    ):
-                        statement_type = "SUMMARY OF PROFIT OR LOSS"
-                    elif re.search(
-                        r"\bFINANCIAL\s+STATEMENTS?\b", full_row_upper
-                    ):
-                        statement_type = "FINANCIAL STATEMENTS"
-
-                if statement_type:
-                    active_statement = statement_type
-                    current_subsection = ""
-                    pending_label_prefix = ""
-                    continue
-
-                numeric_words = []
-
-                for w in row_words:
-                    token = w[4].strip()
-                    clean_token = token.replace(" ", "")
-
-                    if financial_num_pattern.fullmatch(clean_token):
-                        if not year_extractor.fullmatch(clean_token):
-                            numeric_words.append(w)
-
-                if not numeric_words:
-                    if re.search(r"\b20\d{2}\b", full_row_str):
-                        continue
-
-                    if re.search(
-                        r"^(NOTE|NOTES|RUPEES|AMOUNTS?|RESTATED|PAGE|CONTENTS|INDEX)\b",
-                        full_row_upper,
-                    ):
-                        continue
-
-                    label_check = re.sub(r"\s+", "", full_row_str.lower())
-                    is_known_label = False
-
-                    for standard_label in STANDARD_LABELS:
-                        standard_check = re.sub(
-                            r"\s+", "", standard_label.lower()
-                        )
-                        if label_check == standard_check:
-                            is_known_label = True
-                            break
-
-                    normalized_row = re.sub(
-                        r"[- ]+", " ", full_row_upper
-                    ).strip()
-
-                    if normalized_row in KNOWN_SUBSECTIONS:
-                        current_subsection = normalized_row[:250]
-                        pending_label_prefix = ""
-                        continue
-
-                    if (
-                        not is_known_label
-                        and len(tokens) <= 6
-                        and len(full_row_str) <= 100
-                        and not full_row_str.isupper()
-                        and not re.search(r"[.!?;:]$", full_row_str)
-                        and not re.search(
-                            r"^(NOTE|NOTES|RUPEES|AMOUNTS?|RESTATED|PAGE|CONTENTS|INDEX)\b",
-                            full_row_upper,
-                        )
-                    ):
-                        if pending_label_prefix:
-                            pending_label_prefix = (
-                                pending_label_prefix + " " + full_row_str
-                            )
-                        else:
-                            pending_label_prefix = full_row_str
-
-                    continue
-
-                label_tokens = []
-                numeric_values = []
-                found_first_number = False
-
-                for w in row_words:
-                    token = w[4].strip()
-                    clean_token = token.replace(" ", "")
-
-                    is_number = bool(
-                        financial_num_pattern.fullmatch(clean_token)
-                        and not year_extractor.fullmatch(clean_token)
-                    )
-
-                    if is_number:
-                        found_first_number = True
-                        numeric_values.append(w)
-                    elif not found_first_number:
-                        label_tokens.append(token)
-
-                raw_label = " ".join(label_tokens).strip()
-
-                if pending_label_prefix:
-                    if raw_label:
-                        raw_label = pending_label_prefix + " " + raw_label
-                    else:
-                        raw_label = pending_label_prefix
-                    pending_label_prefix = ""
-
-                line_item_label = re.sub(r"^\d+[\.\)]\s*", "", raw_label)
-                line_item_label = re.sub(r"\s+", " ", line_item_label).strip()
-
-                if not line_item_label:
-                    continue
-
-                if not re.search(r"[A-Za-z]", line_item_label):
-                    continue
-
-                if len(line_item_label) > 250:
-                    continue
-
-                clean_raw_label = re.sub(
-                    r"[^a-z0-9]", "", line_item_label.lower()
-                )
-
-                for standard_label in STANDARD_LABELS:
-                    clean_std = re.sub(r"[^a-z0-9]", "", standard_label.lower())
-                    if clean_raw_label == clean_std:
-                        line_item_label = standard_label
-                        break
-
-                for number_word in numeric_values:
-                    value = number_word[4].strip()
-
-                    if not value:
-                        continue
-
-                    if not re.search(r"\d", value):
-                        continue
-
-                    value_x = (number_word[0] + number_word[2]) / 2
-                    data_year = None
-
-                    for left_x, right_x, header_year in column_boundaries:
-                        if left_x <= value_x <= right_x + 2:
-                            data_year = header_year
-                            break
-
-                    if data_year is None:
-                        continue
-
-                    records_to_insert.append((
-                        "FMCG",
-                        clean_org[:250],
-                        file_pdf_year,
-                        active_statement,
-                        current_subsection,
-                        line_item_label,
-                        int(data_year),
-                        value[:250],
-                    ))
-
-            if records_to_insert:
-                insert_sql = """
-                    INSERT INTO FinancialRawData 
-                    (Nature, Organization, [PDF-Year], [Statement Type], Subsection, [Item labels], [Data Year], Value)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                cursor.setinputsizes([
-                    (pyodbc.SQL_VARCHAR, 255),
-                    (pyodbc.SQL_VARCHAR, 255),
-                    None,
-                    (pyodbc.SQL_VARCHAR, 255),
-                    (pyodbc.SQL_VARCHAR, 255),
-                    (pyodbc.SQL_VARCHAR, 8000),
-                    None,
-                    (pyodbc.SQL_VARCHAR, 255),
-                ])
-                cursor.fast_executemany = True
-                cursor.executemany(insert_sql, records_to_insert)
-                conn.commit()
-
-        doc.close()
-
-cursor.close()
-conn.close()
+doc.close()
